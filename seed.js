@@ -20,8 +20,7 @@ async function main() {
   console.log('States seeded: Penang, Kedah, NS ready.');
 
   // Seed Admin User
-  const hashedPassword = await bcrypt.hash('Admin1234!', 10);
-
+  const adminPassword = await bcrypt.hash('Admin1234!', 10);
   await prisma.user.upsert({
     where: { email: 'admin@gosuap.com' },
     update: {},
@@ -29,11 +28,26 @@ async function main() {
       name: 'GoSuap Admin',
       email: 'admin@gosuap.com',
       phone: '0100000000',
-      password: hashedPassword,
+      password: adminPassword,
       role: 'ADMIN',
     },
   });
   console.log('Admin seeded: admin@gosuap.com / Admin1234!');
+
+  // Seed Test Agent
+  const agentPassword = await bcrypt.hash('Agent1234!', 10);
+  await prisma.user.upsert({
+    where: { email: 'agent@gosuap.com' },
+    update: {},
+    create: {
+      name: 'Test Agent',
+      email: 'agent@gosuap.com',
+      phone: '0111111111',
+      password: agentPassword,
+      role: 'AGENT',
+    },
+  });
+  console.log('Agent seeded: agent@gosuap.com / Agent1234!');
 }
 
 main()
