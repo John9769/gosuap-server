@@ -1,21 +1,12 @@
 const { prisma } = require('../lib/prisma');
 
-// 1. Get all shops waiting for approval
-// This is what the Admin checks every morning to see new sign-ups.
 const getPendingApprovals = async (req, res) => {
     try {
         const pending = await prisma.vendor.findMany({
-            where: { 
-                status: 'PENDING' 
-            },
-            include: { 
-                agent: { 
-                    select: { 
-                        name: true, 
-                        phone: true 
-                    } 
-                },
-                state: true 
+            where: { status: 'PENDING' },
+            include: {
+                agent: { select: { name: true, phone: true } },
+                state: true
             }
         });
         res.json(pending);
@@ -25,34 +16,24 @@ const getPendingApprovals = async (req, res) => {
     }
 };
 
-// 2. Approve a shop (The "Basic" subscription RM60/RM500)
-// This flips the status to ACTIVE and sets the visibility expiry date.
 const approveVendor = async (req, res) => {
     try {
-        const { vendorId, months } = req.body; 
+        const { vendorId, months } = req.body;
 
         const expiry = new Date();
         expiry.setMonth(expiry.getMonth() + (months || 1));
 
         const updatedVendor = await prisma.vendor.update({
             where: { id: vendorId },
-            data: {
-                status: 'ACTIVE',
-                expiryDate: expiry
-            }
+            data: { status: 'ACTIVE', expiryDate: expiry }
         });
 
-        res.json({ 
-            message: "Shop is now LIVE and visible to users.", 
-            updatedVendor 
-        });
+        res.json({ message: "Shop is now LIVE and visible to users.", updatedVendor });
     } catch (error) {
         res.status(500).json({ error: "Approval process failed." });
     }
 };
 
-// 3. NEW: Premium Boost Logic (Additional Payment)
-// This allows a shop to stay at the TOP of the newspaper.
 const setPremium = async (req, res) => {
     try {
         const { vendorId, months, isPremium } = req.body;
@@ -65,48 +46,34 @@ const setPremium = async (req, res) => {
 
         const updatedVendor = await prisma.vendor.update({
             where: { id: vendorId },
-            data: {
-                isPremium: isPremium,
-                premiumExpiry: pExpiry
-            }
+            data: { isPremium, premiumExpiry: pExpiry }
         });
 
-        res.json({ 
-            message: isPremium ? "Shop is now PREMIUM/BOOSTED" : "Premium removed", 
-            updatedVendor 
+        res.json({
+            message: isPremium ? "Shop is now PREMIUM/BOOSTED" : "Premium removed",
+            updatedVendor
         });
     } catch (error) {
         res.status(500).json({ error: "Could not update Premium status." });
     }
 };
 
-// 4. Platform Stats (The "Owner's Birds-Eye View")
-// Tracks total growth and specifically premium revenue shops.
 const getPlatformStats = async (req, res) => {
     try {
-        // Count how many total shops are online
-        const totalVendors = await prisma.vendor.count({ 
-            where: { status: 'ACTIVE' } 
-        });
+        const [totalVendors, activeVendors, pendingVendors, premiumVendors, totalAgents] = await Promise.all([
+            prisma.vendor.count(),
+            prisma.vendor.count({ where: { status: 'ACTIVE' } }),
+            prisma.vendor.count({ where: { status: 'PENDING' } }),
+            prisma.vendor.count({ where: { isPremium: true, status: 'ACTIVE' } }),
+            prisma.user.count({ where: { role: 'AGENT' } }),
+        ]);
 
-        // Count how many are paying for the Premium boost
-        const premiumVendors = await prisma.vendor.count({ 
-            where: { 
-                isPremium: true, 
-                status: 'ACTIVE' 
-            } 
-        });
-
-        // Count the active sales force
-        const totalAgents = await prisma.user.count({ 
-            where: { role: 'AGENT' } 
-        });
-        
         res.json({
-            activeShops: totalVendors,
-            premiumShops: premiumVendors,
-            totalAgents: totalAgents,
-            platformName: "GoSuap",
+            totalVendors,
+            activeVendors,
+            pendingVendors,
+            premiumVendors,
+            totalAgents,
             updatedAt: new Date()
         });
     } catch (error) {
@@ -114,9 +81,4 @@ const getPlatformStats = async (req, res) => {
     }
 };
 
-module.exports = { 
-    getPendingApprovals, 
-    approveVendor, 
-    setPremium, 
-    getPlatformStats 
-};
+module.exports = { getPendingApprovals, approveVendor, setPremium, getPlatformStats };
