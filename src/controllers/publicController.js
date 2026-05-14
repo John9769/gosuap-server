@@ -5,14 +5,17 @@ const getNearbyShops = async (req, res) => {
     try {
         const { stateId, userLat, userLong } = req.query;
 
-        // Fetch only Active shops in the selected state
+        // Fetch only Active shops that have not expired
         const shops = await prisma.vendor.findMany({
             where: {
                 stateId: stateId,
-                status: 'ACTIVE' 
+                status: 'ACTIVE',
+                expiryDate: {
+                    gt: new Date()
+                }
             },
             include: {
-                menuItems: true 
+                menuItems: true
             }
         });
 
@@ -30,11 +33,8 @@ const getNearbyShops = async (req, res) => {
 
         // 2. THE MULTI-LEVEL SORT (The Newspaper Logic)
         const sortedShops = processedShops.sort((a, b) => {
-            // First: Put Premium (isPremium: true) at the top
             if (a.isPremium && !b.isPremium) return -1;
             if (!a.isPremium && b.isPremium) return 1;
-
-            // Second: If both are same status, show the closest one first
             return a.distance - b.distance;
         });
 
@@ -45,13 +45,11 @@ const getNearbyShops = async (req, res) => {
     }
 };
 
-// Get all States (Ordered alphabetically for the user selection)
+// Get all States
 const getStates = async (req, res) => {
     try {
         const states = await prisma.state.findMany({
-            orderBy: {
-                name: 'asc'
-            }
+            orderBy: { name: 'asc' }
         });
         res.json(states);
     } catch (error) {
@@ -59,4 +57,32 @@ const getStates = async (req, res) => {
     }
 };
 
-module.exports = { getNearbyShops, getStates };
+// Get single vendor by ID for detail page
+const getVendorById = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const vendor = await prisma.vendor.findFirst({
+            where: {
+                id,
+                status: 'ACTIVE',
+                expiryDate: { gt: new Date() }
+            },
+            include: {
+                menuItems: true,
+                state: { select: { name: true } }
+            }
+        });
+
+        if (!vendor) {
+            return res.status(404).json({ error: "Vendor not found or not active." });
+        }
+
+        res.json(vendor);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to load vendor." });
+    }
+};
+
+module.exports = { getNearbyShops, getStates, getVendorById };

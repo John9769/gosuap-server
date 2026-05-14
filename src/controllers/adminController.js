@@ -82,7 +82,6 @@ const getPlatformStats = async (req, res) => {
     }
 };
 
-// Admin creates agent — role is always forced to AGENT
 const createAgent = async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;
@@ -99,7 +98,7 @@ const createAgent = async (req, res) => {
                 email,
                 phone,
                 password: hashedPassword,
-                role: 'AGENT', // Always forced — admin cannot accidentally create another admin
+                role: 'AGENT',
             }
         });
 
@@ -113,4 +112,66 @@ const createAgent = async (req, res) => {
     }
 };
 
-module.exports = { getPendingApprovals, approveVendor, setPremium, getPlatformStats, createAgent };
+const getActiveVendors = async (req, res) => {
+    try {
+        const vendors = await prisma.vendor.findMany({
+            where: { status: 'ACTIVE' },
+            include: {
+                state: { select: { name: true } },
+                agent: { select: { name: true } },
+            },
+            orderBy: { shopName: 'asc' }
+        });
+        res.json(vendors);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch active vendors." });
+    }
+};
+
+// Agent performance leaderboard
+const getAgentStats = async (req, res) => {
+    try {
+        const agents = await prisma.user.findMany({
+            where: { role: 'AGENT' },
+            include: {
+                vendors: {
+                    select: { status: true }
+                },
+                payments: {
+                    where: { isVerified: true },
+                    select: { amount: true }
+                }
+            },
+            orderBy: { name: 'asc' }
+        });
+
+        const result = agents.map(agent => ({
+            id: agent.id,
+            name: agent.name,
+            phone: agent.phone,
+            email: agent.email,
+            totalVendors: agent.vendors.length,
+            activeVendors: agent.vendors.filter(v => v.status === 'ACTIVE').length,
+            pendingVendors: agent.vendors.filter(v => v.status === 'PENDING').length,
+            totalCollected: agent.payments.reduce((sum, p) => sum + p.amount, 0),
+        }));
+
+        // Sort by active vendors descending
+        result.sort((a, b) => b.activeVendors - a.activeVendors);
+
+        res.json(result);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to fetch agent stats." });
+    }
+};
+
+module.exports = {
+    getPendingApprovals,
+    approveVendor,
+    setPremium,
+    getPlatformStats,
+    createAgent,
+    getActiveVendors,
+    getAgentStats
+};
