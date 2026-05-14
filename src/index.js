@@ -5,7 +5,8 @@ require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const vendorRoutes = require('./routes/vendorRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const publicRoutes = require('./routes/publicRoutes'); // New
+const publicRoutes = require('./routes/publicRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 const app = express();
 
@@ -15,7 +16,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/public', publicRoutes); // New
+app.use('/api/public', publicRoutes);
+app.use('/api/payments', paymentRoutes);
 
 const PORT = process.env.PORT || 5000;
 

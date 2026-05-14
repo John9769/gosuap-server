@@ -1,4 +1,5 @@
 const { prisma } = require('../lib/prisma');
+const bcrypt = require('bcrypt');
 
 const getPendingApprovals = async (req, res) => {
     try {
@@ -81,4 +82,35 @@ const getPlatformStats = async (req, res) => {
     }
 };
 
-module.exports = { getPendingApprovals, approveVendor, setPremium, getPlatformStats };
+// Admin creates agent — role is always forced to AGENT
+const createAgent = async (req, res) => {
+    try {
+        const { name, email, phone, password } = req.body;
+
+        if (!name || !email || !phone || !password) {
+            return res.status(400).json({ error: "All fields are required." });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const agent = await prisma.user.create({
+            data: {
+                name,
+                email,
+                phone,
+                password: hashedPassword,
+                role: 'AGENT', // Always forced — admin cannot accidentally create another admin
+            }
+        });
+
+        res.status(201).json({
+            message: "Agent created successfully.",
+            agent: { id: agent.id, name: agent.name, email: agent.email, phone: agent.phone }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(400).json({ error: "Email or phone already exists." });
+    }
+};
+
+module.exports = { getPendingApprovals, approveVendor, setPremium, getPlatformStats, createAgent };
