@@ -19,15 +19,16 @@ const getNearbyShops = async (req, res) => {
             }
         });
 
-        const lat = parseFloat(userLat) || 0;
-        const long = parseFloat(userLong) || 0;
+        const lat = parseFloat(userLat);
+        const long = parseFloat(userLong);
+        const hasGPS = !isNaN(lat) && !isNaN(long);
 
-        // 1. Calculate the distance for every shop
+        // 1. Calculate distance only if GPS is available
         const processedShops = shops.map(shop => {
-            const distance = Math.sqrt(
+            const distance = hasGPS ? Math.sqrt(
                 Math.pow(shop.latitude - lat, 2) +
                 Math.pow(shop.longitude - long, 2)
-            );
+            ) : null;
             return { ...shop, distance };
         });
 
@@ -35,7 +36,8 @@ const getNearbyShops = async (req, res) => {
         const sortedShops = processedShops.sort((a, b) => {
             if (a.isPremium && !b.isPremium) return -1;
             if (!a.isPremium && b.isPremium) return 1;
-            return a.distance - b.distance;
+            if (a.distance !== null && b.distance !== null) return a.distance - b.distance;
+            return 0;
         });
 
         res.json(sortedShops);
