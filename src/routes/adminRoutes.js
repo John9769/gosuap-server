@@ -1,14 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const {
-    getPendingApprovals,
-    approveVendor,
-    setPremium,
-    getPlatformStats,
-    createAgent,
-    getActiveVendors,
-    getExpiringVendors,
-    getAgentStats
+    getPendingApprovals, approveVendor, setPremium, getPlatformStats,
+    createAgent, getActiveVendors, getExpiringVendors, getAgentStats, resetAgentPassword
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/authMiddleware');
 const { isAdmin } = require('../middleware/adminMiddleware');
@@ -21,5 +15,6 @@ router.post('/create-agent', protect, isAdmin, createAgent);
 router.get('/vendors', protect, isAdmin, getActiveVendors);
 router.get('/expiring', protect, isAdmin, getExpiringVendors);
 router.get('/agents', protect, isAdmin, getAgentStats);
+router.post('/reset-password', protect, isAdmin, resetAgentPassword);
 
 module.exports = router;

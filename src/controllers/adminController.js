@@ -66,22 +66,11 @@ const getPlatformStats = async (req, res) => {
             prisma.vendor.count({ where: { isPremium: true, status: 'ACTIVE' } }),
             prisma.user.count({ where: { role: 'AGENT' } }),
             prisma.vendor.count({
-                where: {
-                    status: 'ACTIVE',
-                    expiryDate: { gte: now, lte: in30Days }
-                }
+                where: { status: 'ACTIVE', expiryDate: { gte: now, lte: in30Days } }
             }),
         ]);
 
-        res.json({
-            totalVendors,
-            activeVendors,
-            pendingVendors,
-            premiumVendors,
-            totalAgents,
-            expiringVendors,
-            updatedAt: new Date()
-        });
+        res.json({ totalVendors, activeVendors, pendingVendors, premiumVendors, totalAgents, expiringVendors, updatedAt: new Date() });
     } catch (error) {
         res.status(500).json({ error: "Failed to generate business stats." });
     }
@@ -123,18 +112,13 @@ const getActiveVendors = async (req, res) => {
     }
 };
 
-// Vendors expiring within 30 days — for renewal tracker
 const getExpiringVendors = async (req, res) => {
     try {
         const now = new Date();
         const in30Days = new Date();
         in30Days.setDate(in30Days.getDate() + 30);
-
         const vendors = await prisma.vendor.findMany({
-            where: {
-                status: 'ACTIVE',
-                expiryDate: { gte: now, lte: in30Days }
-            },
+            where: { status: 'ACTIVE', expiryDate: { gte: now, lte: in30Days } },
             include: {
                 state: { select: { name: true } },
                 agent: { select: { name: true, phone: true } },
@@ -147,25 +131,17 @@ const getExpiringVendors = async (req, res) => {
     }
 };
 
-// Expanded agent stats with vendor details + expiry + monthly revenue
 const getAgentStats = async (req, res) => {
     try {
         const agents = await prisma.user.findMany({
             where: { role: 'AGENT' },
             include: {
                 vendors: {
-                    include: {
-                        state: { select: { name: true } }
-                    },
+                    include: { state: { select: { name: true } } },
                     orderBy: { expiryDate: 'asc' }
                 },
                 payments: {
-                    select: {
-                        amount: true,
-                        isVerified: true,
-                        paymentMonth: true,
-                        paymentYear: true
-                    }
+                    select: { amount: true, isVerified: true, paymentMonth: true, paymentYear: true }
                 }
             },
             orderBy: { name: 'asc' }
@@ -179,7 +155,6 @@ const getAgentStats = async (req, res) => {
             const verifiedPayments = agent.payments.filter(p => p.isVerified);
             const totalCollected = verifiedPayments.reduce((sum, p) => sum + p.amount, 0);
 
-            // Monthly revenue breakdown
             const monthlyRevenue = {};
             verifiedPayments.forEach(p => {
                 if (p.paymentMonth && p.paymentYear) {
@@ -205,14 +180,9 @@ const getAgentStats = async (req, res) => {
                         else if (new Date(v.expiryDate) <= in30Days) expiryStatus = 'expiring';
                     }
                     return {
-                        id: v.id,
-                        shopName: v.shopName,
-                        shopPhone: v.shopPhone,
-                        status: v.status,
-                        expiryDate: v.expiryDate,
-                        expiryStatus,
-                        state: v.state?.name,
-                        isPremium: v.isPremium
+                        id: v.id, shopName: v.shopName, shopPhone: v.shopPhone,
+                        status: v.status, expiryDate: v.expiryDate,
+                        expiryStatus, state: v.state?.name, isPremium: v.isPremium
                     };
                 })
             };
@@ -226,13 +196,41 @@ const getAgentStats = async (req, res) => {
     }
 };
 
+// Admin resets any agent's password
+const resetAgentPassword = async (req, res) => {
+    try {
+        const { agentId, newPassword } = req.body;
+
+        if (!agentId || !newPassword) {
+            return res.status(400).json({ error: "agentId and newPassword are required." });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: "Kata laluan mestilah sekurang-kurangnya 8 aksara." });
+        }
+
+        const agent = await prisma.user.findFirst({
+            where: { id: agentId, role: 'AGENT' }
+        });
+
+        if (!agent) {
+            return res.status(404).json({ error: "Agent not found." });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id: agentId },
+            data: { password: hashedPassword }
+        });
+
+        res.json({ message: `Kata laluan ${agent.name} berjaya ditetapkan semula.` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Gagal menetapkan semula kata laluan." });
+    }
+};
+
 module.exports = {
-    getPendingApprovals,
-    approveVendor,
-    setPremium,
-    getPlatformStats,
-    createAgent,
-    getActiveVendors,
-    getExpiringVendors,
-    getAgentStats
+    getPendingApprovals, approveVendor, setPremium, getPlatformStats,
+    createAgent, getActiveVendors, getExpiringVendors, getAgentStats, resetAgentPassword
 };
