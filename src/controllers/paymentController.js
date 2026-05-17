@@ -3,10 +3,10 @@ const { prisma } = require('../lib/prisma');
 // Agent submits payment receipt after collecting cash from vendor
 const submitPayment = async (req, res) => {
     try {
-        const { vendorId, amount, receiptImage } = req.body;
+        const { vendorId, amount, receiptImage, paymentMonth, paymentYear } = req.body;
 
-        if (!vendorId || !amount || !receiptImage) {
-            return res.status(400).json({ error: "vendorId, amount and receiptImage are required." });
+        if (!vendorId || !amount || !receiptImage || !paymentMonth || !paymentYear) {
+            return res.status(400).json({ error: "vendorId, amount, receiptImage, paymentMonth and paymentYear are required." });
         }
 
         // Verify vendor belongs to this agent
@@ -23,6 +23,8 @@ const submitPayment = async (req, res) => {
                 amount: parseFloat(amount),
                 receiptImage,
                 isVerified: false,
+                paymentMonth: parseInt(paymentMonth),
+                paymentYear: parseInt(paymentYear),
                 vendorId,
                 agentId: req.user.id,
             },

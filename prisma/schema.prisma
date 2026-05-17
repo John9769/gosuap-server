@@ -53,14 +53,11 @@ model Vendor {
   isGrabFood    Boolean  @default(false)
   isFoodPanda   Boolean  @default(false)
   
-  // Basic Subscription Status
   status        Status   @default(PENDING)
   expiryDate    DateTime?
 
-  // --- PREMIUM BOOST LOGIC ---
   isPremium     Boolean   @default(false)
   premiumExpiry DateTime? 
-  // ----------------------------
   
   stateId       String
   state         State    @relation(fields: [stateId], references: [id])
@@ -90,6 +87,8 @@ model PaymentRecord {
   amount        Float    
   receiptImage  String   
   isVerified    Boolean  @default(false)
+  paymentMonth  Int?
+  paymentYear   Int?
   
   vendorId      String
   vendor        Vendor   @relation(fields: [vendorId], references: [id])
