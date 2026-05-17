@@ -7,6 +7,7 @@ const {
     getPlatformStats,
     createAgent,
     getActiveVendors,
+    getExpiringVendors,
     getAgentStats
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/authMiddleware');
@@ -18,6 +19,7 @@ router.post('/set-premium', protect, isAdmin, setPremium);
 router.get('/stats', protect, isAdmin, getPlatformStats);
 router.post('/create-agent', protect, isAdmin, createAgent);
 router.get('/vendors', protect, isAdmin, getActiveVendors);
+router.get('/expiring', protect, isAdmin, getExpiringVendors);
 router.get('/agents', protect, isAdmin, getAgentStats);
 
 module.exports = router;

@@ -20,15 +20,12 @@ const getPendingApprovals = async (req, res) => {
 const approveVendor = async (req, res) => {
     try {
         const { vendorId, months } = req.body;
-
         const expiry = new Date();
         expiry.setMonth(expiry.getMonth() + (months || 1));
-
         const updatedVendor = await prisma.vendor.update({
             where: { id: vendorId },
             data: { status: 'ACTIVE', expiryDate: expiry }
         });
-
         res.json({ message: "Shop is now LIVE and visible to users.", updatedVendor });
     } catch (error) {
         res.status(500).json({ error: "Approval process failed." });
@@ -38,18 +35,15 @@ const approveVendor = async (req, res) => {
 const setPremium = async (req, res) => {
     try {
         const { vendorId, months, isPremium } = req.body;
-
         let pExpiry = null;
         if (isPremium) {
             pExpiry = new Date();
             pExpiry.setMonth(pExpiry.getMonth() + (months || 1));
         }
-
         const updatedVendor = await prisma.vendor.update({
             where: { id: vendorId },
             data: { isPremium, premiumExpiry: pExpiry }
         });
-
         res.json({
             message: isPremium ? "Shop is now PREMIUM/BOOSTED" : "Premium removed",
             updatedVendor
@@ -61,12 +55,22 @@ const setPremium = async (req, res) => {
 
 const getPlatformStats = async (req, res) => {
     try {
-        const [totalVendors, activeVendors, pendingVendors, premiumVendors, totalAgents] = await Promise.all([
+        const now = new Date();
+        const in30Days = new Date();
+        in30Days.setDate(in30Days.getDate() + 30);
+
+        const [totalVendors, activeVendors, pendingVendors, premiumVendors, totalAgents, expiringVendors] = await Promise.all([
             prisma.vendor.count(),
             prisma.vendor.count({ where: { status: 'ACTIVE' } }),
             prisma.vendor.count({ where: { status: 'PENDING' } }),
             prisma.vendor.count({ where: { isPremium: true, status: 'ACTIVE' } }),
             prisma.user.count({ where: { role: 'AGENT' } }),
+            prisma.vendor.count({
+                where: {
+                    status: 'ACTIVE',
+                    expiryDate: { gte: now, lte: in30Days }
+                }
+            }),
         ]);
 
         res.json({
@@ -75,6 +79,7 @@ const getPlatformStats = async (req, res) => {
             pendingVendors,
             premiumVendors,
             totalAgents,
+            expiringVendors,
             updatedAt: new Date()
         });
     } catch (error) {
@@ -85,23 +90,13 @@ const getPlatformStats = async (req, res) => {
 const createAgent = async (req, res) => {
     try {
         const { name, email, phone, password } = req.body;
-
         if (!name || !email || !phone || !password) {
             return res.status(400).json({ error: "All fields are required." });
         }
-
         const hashedPassword = await bcrypt.hash(password, 10);
-
         const agent = await prisma.user.create({
-            data: {
-                name,
-                email,
-                phone,
-                password: hashedPassword,
-                role: 'AGENT',
-            }
+            data: { name, email, phone, password: hashedPassword, role: 'AGENT' }
         });
-
         res.status(201).json({
             message: "Agent created successfully.",
             agent: { id: agent.id, name: agent.name, email: agent.email, phone: agent.phone }
@@ -128,37 +123,102 @@ const getActiveVendors = async (req, res) => {
     }
 };
 
-// Agent performance leaderboard
+// Vendors expiring within 30 days — for renewal tracker
+const getExpiringVendors = async (req, res) => {
+    try {
+        const now = new Date();
+        const in30Days = new Date();
+        in30Days.setDate(in30Days.getDate() + 30);
+
+        const vendors = await prisma.vendor.findMany({
+            where: {
+                status: 'ACTIVE',
+                expiryDate: { gte: now, lte: in30Days }
+            },
+            include: {
+                state: { select: { name: true } },
+                agent: { select: { name: true, phone: true } },
+            },
+            orderBy: { expiryDate: 'asc' }
+        });
+        res.json(vendors);
+    } catch (error) {
+        res.status(500).json({ error: "Failed to fetch expiring vendors." });
+    }
+};
+
+// Expanded agent stats with vendor details + expiry + monthly revenue
 const getAgentStats = async (req, res) => {
     try {
         const agents = await prisma.user.findMany({
             where: { role: 'AGENT' },
             include: {
                 vendors: {
-                    select: { status: true }
+                    include: {
+                        state: { select: { name: true } }
+                    },
+                    orderBy: { expiryDate: 'asc' }
                 },
                 payments: {
-                    where: { isVerified: true },
-                    select: { amount: true }
+                    select: {
+                        amount: true,
+                        isVerified: true,
+                        paymentMonth: true,
+                        paymentYear: true
+                    }
                 }
             },
             orderBy: { name: 'asc' }
         });
 
-        const result = agents.map(agent => ({
-            id: agent.id,
-            name: agent.name,
-            phone: agent.phone,
-            email: agent.email,
-            totalVendors: agent.vendors.length,
-            activeVendors: agent.vendors.filter(v => v.status === 'ACTIVE').length,
-            pendingVendors: agent.vendors.filter(v => v.status === 'PENDING').length,
-            totalCollected: agent.payments.reduce((sum, p) => sum + p.amount, 0),
-        }));
+        const now = new Date();
+        const in30Days = new Date();
+        in30Days.setDate(in30Days.getDate() + 30);
 
-        // Sort by active vendors descending
+        const result = agents.map(agent => {
+            const verifiedPayments = agent.payments.filter(p => p.isVerified);
+            const totalCollected = verifiedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+            // Monthly revenue breakdown
+            const monthlyRevenue = {};
+            verifiedPayments.forEach(p => {
+                if (p.paymentMonth && p.paymentYear) {
+                    const key = `${p.paymentYear}-${String(p.paymentMonth).padStart(2, '0')}`;
+                    monthlyRevenue[key] = (monthlyRevenue[key] || 0) + p.amount;
+                }
+            });
+
+            return {
+                id: agent.id,
+                name: agent.name,
+                phone: agent.phone,
+                email: agent.email,
+                totalVendors: agent.vendors.length,
+                activeVendors: agent.vendors.filter(v => v.status === 'ACTIVE').length,
+                pendingVendors: agent.vendors.filter(v => v.status === 'PENDING').length,
+                totalCollected,
+                monthlyRevenue,
+                vendors: agent.vendors.map(v => {
+                    let expiryStatus = 'ok';
+                    if (v.expiryDate) {
+                        if (new Date(v.expiryDate) < now) expiryStatus = 'expired';
+                        else if (new Date(v.expiryDate) <= in30Days) expiryStatus = 'expiring';
+                    }
+                    return {
+                        id: v.id,
+                        shopName: v.shopName,
+                        shopPhone: v.shopPhone,
+                        status: v.status,
+                        expiryDate: v.expiryDate,
+                        expiryStatus,
+                        state: v.state?.name,
+                        isPremium: v.isPremium
+                    };
+                })
+            };
+        });
+
         result.sort((a, b) => b.activeVendors - a.activeVendors);
-
         res.json(result);
     } catch (error) {
         console.error(error);
@@ -173,5 +233,6 @@ module.exports = {
     getPlatformStats,
     createAgent,
     getActiveVendors,
+    getExpiringVendors,
     getAgentStats
 };
